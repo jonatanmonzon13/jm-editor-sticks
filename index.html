@@ -602,7 +602,10 @@ async function ensureFont() {
     const FONT_URL = 'https://raw.githubusercontent.com/openmaptiles/fonts/master/roboto/Roboto-Bold.ttf';
     cachedFontBytes = await fetchFile(FONT_URL);
   }
-  await ffmpeg.writeFile('font.ttf', cachedFontBytes);
+  // writeFile transfers (detaches) the underlying ArrayBuffer to the worker,
+  // so passing the cached bytes directly would only work once. Slice makes
+  // a fresh copy each time, leaving cachedFontBytes intact for next batch.
+  await ffmpeg.writeFile('font.ttf', cachedFontBytes.slice());
   fontLoaded = true;
 }
 
