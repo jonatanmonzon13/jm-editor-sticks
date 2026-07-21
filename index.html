@@ -530,6 +530,14 @@ function hexToFF(hex) {
 }
 
 // ---------- FFmpeg setup ----------
+// These are fetched/blobified once ever, then reused across every batch
+// restart — only the lightweight FFmpeg instance + WASM instantiation
+// happens per batch, not the 31MB download+processing.
+let cachedCoreURL = null;
+let cachedWasmURL = null;
+let cachedClassWorkerURL = null;
+let cachedFontBytes = null;
+
 async function fetchWithProgress(url, mimeType, onProgress) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`No se pudo descargar ${url} (HTTP ${resp.status})`);
@@ -560,43 +568,47 @@ async function ensureFFmpeg() {
   ffmpeg = new FFmpeg();
   ffmpeg.on('log', ({ message }) => log(message));
 
-  // The FFmpeg class normally spins up a Worker pointing straight at the
-  // unpkg.com script. Browsers block that ("cannot be accessed from
-  // origin ...") because the Worker script's origin (unpkg.com) doesn't
-  // match the page's origin. Fix: build that worker from a blob created
-  // from a copy of the script embedded in this same HTML file, so it's
-  // effectively same-origin no matter where this file is opened from.
-  const workerSrc = document.getElementById('ffmpeg-worker-src').textContent;
-  const classWorkerURL = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' }));
+  if (!cachedClassWorkerURL) {
+    const workerSrc = document.getElementById('ffmpeg-worker-src').textContent;
+    cachedClassWorkerURL = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' }));
+  }
 
-  setStatus(0, 'Descargando motor de video (js)…');
-  const coreURL = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`, 'text/javascript');
+  if (!cachedCoreURL || !cachedWasmURL) {
+    setStatus(0, 'Descargando motor de video (js)…');
+    cachedCoreURL = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`, 'text/javascript');
 
-  // This is the big one (~31MB) — only downloads once per browser session.
-  const wasmURL = await fetchWithProgress(
-    `${CORE_BASE}/ffmpeg-core.wasm`,
-    'application/wasm',
-    (received, total) => {
-      const mb = (n) => (n / 1024 / 1024).toFixed(1);
-      const pct = (received / total) * 100;
-      setStatus(pct * 0.03, `Descargando motor de video… ${mb(received)} / ${mb(total)} MB`);
-    }
-  );
+    // This is the big one (~31MB) — only downloads/processes once per page load.
+    cachedWasmURL = await fetchWithProgress(
+      `${CORE_BASE}/ffmpeg-core.wasm`,
+      'application/wasm',
+      (received, total) => {
+        const mb = (n) => (n / 1024 / 1024).toFixed(1);
+        const pct = (received / total) * 100;
+        setStatus(pct * 0.03, `Descargando motor de video… ${mb(received)} / ${mb(total)} MB`);
+      }
+    );
+  } else {
+    setStatus(1, 'Reiniciando motor…');
+  }
 
   setStatus(3, 'Iniciando FFmpeg…');
-  await ffmpeg.load({ coreURL, wasmURL, classWorkerURL });
+  await ffmpeg.load({ coreURL: cachedCoreURL, wasmURL: cachedWasmURL, classWorkerURL: cachedClassWorkerURL });
   return ffmpeg;
 }
 
 async function ensureFont() {
-  if (fontLoaded) return;
-  setStatus(2, 'Descargando fuente…');
-  const fontData = await fetchFile(FONT_URL);
-  await ffmpeg.writeFile('font.ttf', fontData);
+  if (!cachedFontBytes) {
+    setStatus(2, 'Descargando fuente…');
+    const FONT_URL = 'https://raw.githubusercontent.com/openmaptiles/fonts/master/roboto/Roboto-Bold.ttf';
+    cachedFontBytes = await fetchFile(FONT_URL);
+  }
+  await ffmpeg.writeFile('font.ttf', cachedFontBytes);
   fontLoaded = true;
 }
 
 // ---------- Main pipeline ----------
+const BATCH_SIZE = 10; // blocks per FFmpeg engine "life" — keeps WASM memory from piling up on long scripts
+
 processBtn.addEventListener('click', async () => {
   clearError();
   downloadBtn.classList.remove('show');
@@ -618,9 +630,6 @@ processBtn.addEventListener('click', async () => {
     }
 
     processBtn.disabled = true;
-    setStatus(0, 'Cargando FFmpeg…');
-    await ensureFFmpeg();
-    await ensureFont();
 
     const profileKey = profileSel.value;
     const profile = profileKey === 'custom'
@@ -631,68 +640,94 @@ processBtn.addEventListener('click', async () => {
     const transition = transitionSel.value;
     const frameMode = frameSel.value;
 
-    // 1. write images
-    setStatus(4, 'Copiando imágenes…');
-    for (let i = 0; i < sortedImages.length; i++) {
-      const f = sortedImages[i];
-      const ext = f.name.split('.').pop().toLowerCase();
-      await ffmpeg.writeFile(`img_${i}.${ext}`, await fetchFile(f));
+    const numBatches = Math.ceil(blocks.length / BATCH_SIZE);
+    let accumBytes = null; // merged silent video so far, carried across engine restarts
+
+    for (let batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+      const batchStart = batchIdx * BATCH_SIZE;
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, blocks.length);
+
+      // Fresh FFmpeg engine per batch: WASM memory only grows during a
+      // session and is never released, so long scripts (80-120+ bloques)
+      // eventually run out and throw "memory access out of bounds".
+      // Restarting periodically resets memory to a clean baseline.
+      setStatus((batchStart / blocks.length) * 90, `Iniciando motor (tanda ${batchIdx + 1}/${numBatches})…`);
+      ffmpeg = null;
+      fontLoaded = false;
+      await ensureFFmpeg();
+      await ensureFont();
+
+      if (accumBytes) {
+        await ffmpeg.writeFile('prev_accum.mp4', accumBytes);
+      }
+
+      const clipNames = [];
+      for (let i = batchStart; i < batchEnd; i++) {
+        const block = blocks[i];
+        const globalPct = (i / blocks.length) * 90;
+        setStatus(globalPct, `Generando clip ${i + 1}/${blocks.length}…`);
+
+        const f = sortedImages[i];
+        const ext = f.name.split('.').pop().toLowerCase();
+        const imgName = `img_${i}.${ext}`;
+        await ffmpeg.writeFile(imgName, await fetchFile(f));
+
+        const subName = `sub_${i}.txt`;
+        const clipName = `clip_${i}.mp4`;
+        clipNames.push(clipName);
+
+        await ffmpeg.writeFile(subName, wrapText(block.text));
+
+        const dur = block.duration;
+        const frames = Math.max(Math.round(dur * 30), 4);
+
+        const frameFilter = frameMode === 'crop'
+          ? 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
+          : 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black';
+
+        // Prescale kept modest (1.4x target, not 2x) — the bigger the
+        // intermediate canvas zoompan works on, the more memory it eats
+        // per clip, and that adds up fast across many blocks.
+        const zoomFilter = kenBurns
+          ? `scale=1512:2688:force_original_aspect_ratio=increase,crop=1512:2688,zoompan=z='min(zoom+0.0012,1.18)':d=${frames}:s=1080x1920:fps=30`
+          : `${frameFilter},fps=30`;
+
+        const drawtext = `drawtext=fontfile=font.ttf:textfile=${subName}:fontcolor=${profile.text}:fontsize=58:line_spacing=12:box=1:boxcolor=${profile.box}@${profile.boxAlpha}:boxborderw=22:x=(w-text_w)/2:y=h-th-140`;
+
+        const fadeFilter = transition === 'fade'
+          ? `,fade=t=in:st=0:d=0.15,fade=t=out:st=${Math.max(dur - 0.15, 0)}:d=0.15`
+          : '';
+
+        const vf = `${zoomFilter},setsar=1,${drawtext}${fadeFilter}`;
+
+        await ffmpeg.exec([
+          '-loop', '1', '-i', imgName,
+          '-t', String(dur),
+          '-vf', vf,
+          '-r', '30',
+          '-pix_fmt', 'yuv420p',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+          clipName
+        ]);
+
+        // Drop the source image from the virtual FS right away instead of
+        // holding every image in the batch in memory at once.
+        try { await ffmpeg.deleteFile(imgName); } catch (e) { /* non-fatal */ }
+      }
+
+      setStatus((batchEnd / blocks.length) * 90, `Uniendo tanda ${batchIdx + 1}/${numBatches}…`);
+      const listEntries = accumBytes
+        ? ["file 'prev_accum.mp4'", ...clipNames.map(n => `file '${n}'`)]
+        : clipNames.map(n => `file '${n}'`);
+      await ffmpeg.writeFile('batch_list.txt', listEntries.join('\n'));
+      await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'batch_list.txt', '-c', 'copy', 'batch_accum.mp4']);
+
+      accumBytes = await ffmpeg.readFile('batch_accum.mp4');
     }
 
-    // 2. build one clip per block (image + zoom + subtitle burned in)
-    const clipNames = [];
-    for (let i = 0; i < blocks.length; i++) {
-      const block = blocks[i];
-      const pct = 6 + (i / blocks.length) * 70;
-      setStatus(pct, `Generando clip ${i + 1}/${blocks.length}…`);
-
-      const f = sortedImages[i];
-      const ext = f.name.split('.').pop().toLowerCase();
-      const imgName = `img_${i}.${ext}`;
-      const subName = `sub_${i}.txt`;
-      const clipName = `clip_${i}.mp4`;
-      clipNames.push(clipName);
-
-      await ffmpeg.writeFile(subName, wrapText(block.text));
-
-      const dur = block.duration;
-      const frames = Math.max(Math.round(dur * 30), 4);
-
-      const frameFilter = frameMode === 'crop'
-        ? 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
-        : 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black';
-
-      const zoomFilter = kenBurns
-        ? `scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,zoompan=z='min(zoom+0.0012,1.18)':d=${frames}:s=1080x1920:fps=30`
-        : `${frameFilter},fps=30`;
-
-      const drawtext = `drawtext=fontfile=font.ttf:textfile=${subName}:fontcolor=${profile.text}:fontsize=58:line_spacing=12:box=1:boxcolor=${profile.box}@${profile.boxAlpha}:boxborderw=22:x=(w-text_w)/2:y=h-th-140`;
-
-      const fadeFilter = transition === 'fade'
-        ? `,fade=t=in:st=0:d=0.15,fade=t=out:st=${Math.max(dur - 0.15, 0)}:d=0.15`
-        : '';
-
-      const vf = `${zoomFilter},setsar=1,${drawtext}${fadeFilter}`;
-
-      await ffmpeg.exec([
-        '-loop', '1', '-i', imgName,
-        '-t', String(dur),
-        '-vf', vf,
-        '-r', '30',
-        '-pix_fmt', 'yuv420p',
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
-        clipName
-      ]);
-    }
-
-    // 3. concat all clips
-    setStatus(78, 'Uniendo clips…');
-    const listTxt = clipNames.map(n => `file '${n}'`).join('\n');
-    await ffmpeg.writeFile('list.txt', listTxt);
-    await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', 'video_noaudio.mp4']);
-
-    // 4. audio: narration (+ optional bg music)
-    setStatus(86, 'Mezclando audio…');
+    // 4. audio: narration (+ optional bg music) — reuses the last batch's engine
+    setStatus(91, 'Mezclando audio…');
+    await ffmpeg.writeFile('video_noaudio.mp4', accumBytes);
     const narrationExt = narrationInput.files[0].name.split('.').pop().toLowerCase();
     await ffmpeg.writeFile(`narration.${narrationExt}`, await fetchFile(narrationInput.files[0]));
 
@@ -711,7 +746,7 @@ processBtn.addEventListener('click', async () => {
     }
 
     // 5. final mux
-    setStatus(94, 'Exportando video final…');
+    setStatus(96, 'Exportando video final…');
     await ffmpeg.exec([
       '-i', 'video_noaudio.mp4',
       '-i', audioOut,
