@@ -650,8 +650,14 @@ processBtn.addEventListener('click', async () => {
       // Fresh FFmpeg engine per batch: WASM memory only grows during a
       // session and is never released, so long scripts (80-120+ bloques)
       // eventually run out and throw "memory access out of bounds".
-      // Restarting periodically resets memory to a clean baseline.
+      // Restarting periodically resets memory to a clean baseline —
+      // but that only works if the OLD worker is actually terminated
+      // first; just dropping the JS reference leaves it running in the
+      // background, still holding all its memory.
       setStatus((batchStart / blocks.length) * 90, `Iniciando motor (tanda ${batchIdx + 1}/${numBatches})…`);
+      if (ffmpeg) {
+        try { ffmpeg.terminate(); } catch (e) { /* already gone */ }
+      }
       ffmpeg = null;
       fontLoaded = false;
       await ensureFFmpeg();
