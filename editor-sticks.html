@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor Sticks · JM BOTS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal:#35e0c8;
+    --magenta:#c15bff;
+    --bg:#07090d;
+    --panel:#0e1218;
+    --panel-2:#131824;
+    --border:#1e2531;
+    --text:#e8ecf1;
+    --text-dim:#8993a4;
+    --danger:#ff5470;
+    --ok:#35e0c8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:radial-gradient(1200px 600px at 20% -10%, #10203a33, transparent), var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding:32px 20px 80px;
+  }
+  .wrap{max-width:980px;margin:0 auto;}
+  header{margin-bottom:28px;}
+  header h1{
+    font-family:'Sora',sans-serif;
+    font-weight:800;
+    font-size:28px;
+    margin:0 0 6px;
+    background:linear-gradient(90deg,var(--teal),var(--magenta));
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+  header p{color:var(--text-dim);margin:0;font-size:14px;}
+  .badge{
+    display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;
+    color:var(--teal);border:1px solid #35e0c855;background:#35e0c811;
+    padding:3px 8px;border-radius:6px;margin-top:10px;
+  }
+  .card{
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:22px;margin-bottom:18px;
+  }
+  .card h2{
+    font-family:'Sora',sans-serif;font-size:15px;margin:0 0 16px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .card h2 .n{
+    width:22px;height:22px;border-radius:50%;background:var(--panel-2);
+    border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+    font-size:12px;color:var(--teal);flex-shrink:0;
+  }
+  label{display:block;font-size:13px;color:var(--text-dim);margin:14px 0 6px;}
+  label:first-of-type{margin-top:0;}
+  select, input[type=file], input[type=text], input[type=color], textarea{
+    width:100%;background:var(--panel-2);border:1px solid var(--border);
+    color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;
+    font-family:'Inter',sans-serif;
+  }
+  input[type=color]{padding:4px;height:38px;cursor:pointer;}
+  textarea{min-height:120px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical;}
+  select{cursor:pointer;}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+  @media(max-width:640px){.row,.row3{grid-template-columns:1fr;}}
+  .toggle-row{
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    padding:10px 14px;margin-top:10px;
+  }
+  .toggle-row span{font-size:13px;}
+  .switch{position:relative;width:42px;height:24px;flex-shrink:0;}
+  .switch input{opacity:0;width:0;height:0;}
+  .slider{
+    position:absolute;inset:0;background:#2a3242;border-radius:24px;cursor:pointer;transition:.2s;
+  }
+  .slider:before{
+    content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;
+    background:white;border-radius:50%;transition:.2s;
+  }
+  .switch input:checked + .slider{background:var(--teal);}
+  .switch input:checked + .slider:before{transform:translateX(18px);}
+  .hint{font-size:11.5px;color:var(--text-dim);margin-top:6px;line-height:1.5;}
+  .filelist{
+    margin-top:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;
+    color:var(--text-dim);max-height:140px;overflow-y:auto;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:10px;
+  }
+  .filelist div{padding:2px 0;}
+  .filelist .warn{color:var(--danger);}
+  .filelist .ok{color:var(--ok);}
+  #customColors{display:none;}
+  #customColors.show{display:grid;}
+  button{
+    font-family:'Sora',sans-serif;font-weight:700;font-size:14px;
+    background:linear-gradient(90deg,var(--teal),var(--magenta));
+    color:#07090d;border:none;border-radius:10px;padding:14px 20px;
+    cursor:pointer;width:100%;letter-spacing:.2px;
+  }
+  button:disabled{opacity:.5;cursor:not-allowed;}
+  button.secondary{
+    background:var(--panel-2);color:var(--text);border:1px solid var(--border);
+  }
+  .status-box{
+    background:var(--panel-2);border:1px solid var(--border);border-radius:10px;
+    padding:14px;margin-top:14px;display:none;
+  }
+  .status-box.show{display:block;}
+  .status-box .label{font-size:12.5px;color:var(--text-dim);margin-bottom:8px;display:flex;justify-content:space-between;}
+  .bar{height:8px;background:#1a2130;border-radius:4px;overflow:hidden;}
+  .bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--magenta));transition:width .2s;}
+  .log{
+    font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);
+    max-height:160px;overflow-y:auto;margin-top:10px;line-height:1.6;white-space:pre-wrap;
+  }
+  .error-banner{
+    background:#2a0f18;border:1px solid var(--danger);color:#ffb3c0;
+    border-radius:10px;padding:14px;margin-top:14px;font-size:13px;display:none;
+  }
+  .error-banner.show{display:block;}
+  video{width:100%;border-radius:10px;margin-top:14px;background:#000;max-height:480px;}
+  #downloadBtn{display:none;margin-top:12px;}
+  #downloadBtn.show{display:block;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Editor Sticks</h1>
+    <p>Armá el video final (imágenes + SRT + narración) directo en el navegador, sin subir nada a ningún servidor.</p>
+    <span class="badge">v1 · 9:16 · Stick Finanzas / Stick Noir / Custom</span>
+  </header>
+
+  <div class="card">
+    <h2><span class="n">1</span> Perfil del canal</h2>
+    <label>Elegí el perfil</label>
+    <select id="profile">
+      <option value="finanzas">Stick Finanzas (rojo/negro/blanco)</option>
+      <option value="noir">Stick Noir (noir, acentos rojos)</option>
+      <option value="custom">Custom</option>
+    </select>
+    <div class="row" id="customColors">
+      <div>
+        <label>Color de texto</label>
+        <input type="color" id="customText" value="#ffffff">
+      </div>
+      <div>
+        <label>Color de caja</label>
+        <input type="color" id="customBox" value="#c1121c">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">2</span> Archivos</h2>
+    <label>Imágenes (mismo orden que el SRT — se ordenan por nombre de archivo)</label>
+    <input type="file" id="images" accept="image/*" multiple>
+    <div class="filelist" id="imgList" style="display:none;"></div>
+
+    <label>SRT</label>
+    <input type="file" id="srtFile" accept=".srt">
+    <textarea id="srtText" placeholder="...o pegá el contenido del SRT acá directamente"></textarea>
+
+    <label>Narración (audio del narrador)</label>
+    <input type="file" id="narration" accept="audio/*">
+
+    <label>Música de fondo (opcional)</label>
+    <input type="file" id="bgmusic" accept="audio/*">
+  </div>
+
+  <div class="card">
+    <h2><span class="n">3</span> Opciones</h2>
+    <div class="toggle-row">
+      <span>Ken Burns (zoom lento)</span>
+      <label class="switch"><input type="checkbox" id="kenburns" checked><span class="slider"></span></label>
+    </div>
+    <label>Transición entre imágenes</label>
+    <select id="transition">
+      <option value="cut">Corte duro</option>
+      <option value="fade">Fade 150ms</option>
+    </select>
+    <label>Encuadre de imagen</label>
+    <select id="frame">
+      <option value="crop">Llenar pantalla (recorta bordes)</option>
+      <option value="pad">Ajustar completo (barras negras si hace falta)</option>
+    </select>
+    <div class="hint">Las imágenes ya vienen 9:16 desde tu pipeline habitual — "Llenar pantalla" es lo recomendado por default.</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="n">4</span> Generar</h2>
+    <div class="hint">La primera vez que lo usás en un navegador, descarga el motor de FFmpeg (~31 MB) — con conexión lenta puede tardar varios minutos. Tu navegador lo cachea, así que las próximas veces arranca rápido.</div>
+    <button id="processBtn">Procesar video</button>
+    <div class="status-box" id="statusBox">
+      <div class="label"><span id="statusText">Preparando…</span><span id="statusPct">0%</span></div>
+      <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+      <div class="log" id="logBox"></div>
+    </div>
+    <div class="error-banner" id="errorBanner"></div>
+    <video id="preview" controls style="display:none;"></video>
+    <button id="downloadBtn" class="secondary">Descargar MP4</button>
+  </div>
+</div>
+
+<script type="text/plain" id="ffmpeg-worker-src">
+// Self-contained ffmpeg.wasm class worker (const.js + errors.js + worker.js inlined)
+// Generated from @ffmpeg/ffmpeg@0.12.15 to avoid cross-origin Worker construction issues.
+
+const MIME_TYPE_JAVASCRIPT = "text/javascript";
+const MIME_TYPE_WASM = "application/wasm";
+const CORE_VERSION = "0.12.9";
+const CORE_URL = `https://unpkg.com/@ffmpeg/core@${CORE_VERSION}/dist/umd/ffmpeg-core.js`;
+var FFMessageType;
+(function (FFMessageType) {
+    FFMessageType["LOAD"] = "LOAD";
+    FFMessageType["EXEC"] = "EXEC";
+    FFMessageType["FFPROBE"] = "FFPROBE";
+    FFMessageType["WRITE_FILE"] = "WRITE_FILE";
+    FFMessageType["READ_FILE"] = "READ_FILE";
+    FFMessageType["DELETE_FILE"] = "DELETE_FILE";
+    FFMessageType["RENAME"] = "RENAME";
+    FFMessageType["CREATE_DIR"] = "CREATE_DIR";
+    FFMessageType["LIST_DIR"] = "LIST_DIR";
+    FFMessageType["DELETE_DIR"] = "DELETE_DIR";
+    FFMessageType["ERROR"] = "ERROR";
+    FFMessageType["DOWNLOAD"] = "DOWNLOAD";
+    FFMessageType["PROGRESS"] = "PROGRESS";
+    FFMessageType["LOG"] = "LOG";
+    FFMessageType["MOUNT"] = "MOUNT";
+    FFMessageType["UNMOUNT"] = "UNMOUNT";
+})(FFMessageType || (FFMessageType = {}));
+
+const ERROR_UNKNOWN_MESSAGE_TYPE = new Error("unknown message type");
+const ERROR_NOT_LOADED = new Error("ffmpeg is not loaded, call `await ffmpeg.load()` first");
+const ERROR_TERMINATED = new Error("called FFmpeg.terminate()");
+const ERROR_IMPORT_FAILURE = new Error("failed to import ffmpeg-core.js");
+
+let ffmpeg;
+const load = async ({ coreURL: _coreURL, wasmURL: _wasmURL, workerURL: _workerURL, }) => {
+    const first = !ffmpeg;
+    try {
+        if (!_coreURL)
+            _coreURL = CORE_URL;
+        // when web worker type is `classic`.
+        importScripts(_coreURL);
+    }
+    catch {
+        if (!_coreURL || _coreURL === CORE_URL)
+            _coreURL = CORE_URL.replace('/umd/', '/esm/');
+        // when web worker type is `module`.
+        self.createFFmpegCore = (await import(
+        /* @vite-ignore */ _coreURL)).default;
+        if (!self.createFFmpegCore) {
+            throw ERROR_IMPORT_FAILURE;
+        }
+    }
+    const coreURL = _coreURL;
+    const wasmURL = _wasmURL ? _wasmURL : _coreURL.replace(/.js$/g, ".wasm");
+    const workerURL = _workerURL
+        ? _workerURL
+        : _coreURL.replace(/.js$/g, ".worker.js");
+    ffmpeg = await self.createFFmpegCore({
+        // Fix `Overload resolution failed.` when using multi-threaded ffmpeg-core.
+        // Encoded wasmURL and workerURL in the URL as a hack to fix locateFile issue.
+        mainScriptUrlOrBlob: `${coreURL}#${btoa(JSON.stringify({ wasmURL, workerURL }))}`,
+    });
+    ffmpeg.setLogger((data) => self.postMessage({ type: FFMessageType.LOG, data }));
+    ffmpeg.setProgress((data) => self.postMessage({
+        type: FFMessageType.PROGRESS,
+        data,
+    }));
+    return first;
+};
+const exec = ({ args, timeout = -1 }) => {
+    ffmpeg.setTimeout(timeout);
+    ffmpeg.exec(...args);
+    const ret = ffmpeg.ret;
+    ffmpeg.reset();
+    return ret;
+};
+const ffprobe = ({ args, timeout = -1 }) => {
+    ffmpeg.setTimeout(timeout);
+    ffmpeg.ffprobe(...args);
+    const ret = ffmpeg.ret;
+    ffmpeg.reset();
+    return ret;
+};
+const writeFile = ({ path, data }) => {
+    ffmpeg.FS.writeFile(path, data);
+    return true;
+};
+const readFile = ({ path, encoding }) => ffmpeg.FS.readFile(path, { encoding });
+// TODO: check if deletion works.
+const deleteFile = ({ path }) => {
+    ffmpeg.FS.unlink(path);
+    return true;
+};
+const rename = ({ oldPath, newPath }) => {
+    ffmpeg.FS.rename(oldPath, newPath);
+    return true;
+};
+// TODO: check if creation works.
+const createDir = ({ path }) => {
+    ffmpeg.FS.mkdir(path);
+    return true;
+};
+const listDir = ({ path }) => {
+    const names = ffmpeg.FS.readdir(path);
+    const nodes = [];
+    for (const name of names) {
+        const stat = ffmpeg.FS.stat(`${path}/${name}`);
+        const isDir = ffmpeg.FS.isDir(stat.mode);
+        nodes.push({ name, isDir });
+    }
+    return nodes;
+};
+// TODO: check if deletion works.
+const deleteDir = ({ path }) => {
+    ffmpeg.FS.rmdir(path);
+    return true;
+};
+const mount = ({ fsType, options, mountPoint }) => {
+    const str = fsType;
+    const fs = ffmpeg.FS.filesystems[str];
+    if (!fs)
+        return false;
+    ffmpeg.FS.mount(fs, options, mountPoint);
+    return true;
+};
+const unmount = ({ mountPoint }) => {
+    ffmpeg.FS.unmount(mountPoint);
+    return true;
+};
+self.onmessage = async ({ data: { id, type, data: _data }, }) => {
+    const trans = [];
+    let data;
+    try {
+        if (type !== FFMessageType.LOAD && !ffmpeg)
+            throw ERROR_NOT_LOADED; // eslint-disable-line
+        switch (type) {
+            case FFMessageType.LOAD:
+                data = await load(_data);
+                break;
+            case FFMessageType.EXEC:
+                data = exec(_data);
+                break;
+            case FFMessageType.FFPROBE:
+                data = ffprobe(_data);
+                break;
+            case FFMessageType.WRITE_FILE:
+                data = writeFile(_data);
+                break;
+            case FFMessageType.READ_FILE:
+                data = readFile(_data);
+                break;
+            case FFMessageType.DELETE_FILE:
+                data = deleteFile(_data);
+                break;
+            case FFMessageType.RENAME:
+                data = rename(_data);
+                break;
+            case FFMessageType.CREATE_DIR:
+                data = createDir(_data);
+                break;
+            case FFMessageType.LIST_DIR:
+                data = listDir(_data);
+                break;
+            case FFMessageType.DELETE_DIR:
+                data = deleteDir(_data);
+                break;
+            case FFMessageType.MOUNT:
+                data = mount(_data);
+                break;
+            case FFMessageType.UNMOUNT:
+                data = unmount(_data);
+                break;
+            default:
+                throw ERROR_UNKNOWN_MESSAGE_TYPE;
+        }
+    }
+    catch (e) {
+        self.postMessage({
+            id,
+            type: FFMessageType.ERROR,
+            data: e.toString(),
+        });
+        return;
+    }
+    if (data instanceof Uint8Array) {
+        trans.push(data.buffer);
+    }
+    self.postMessage({ id, type, data }, trans);
+};
+
+</script>
+
+<script type="module">
+import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js';
+import { toBlobURL, fetchFile } from 'https://unpkg.com/@ffmpeg/util@0.12.2/dist/esm/index.js';
+
+const FONT_URL = 'https://raw.githubusercontent.com/openmaptiles/fonts/master/roboto/Roboto-Bold.ttf';
+const CORE_BASE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm';
+
+const PROFILES = {
+  finanzas: { text: '#ffffff', box: '#c1121c', boxAlpha: 0.85 },
+  noir:     { text: '#ffffff', box: '#0a0a0a', boxAlpha: 0.85 },
+  custom:   { text: '#ffffff', box: '#c1121c', boxAlpha: 0.85 }
+};
+
+const el = (id) => document.getElementById(id);
+const profileSel = el('profile');
+const customColors = el('customColors');
+const imgInput = el('images');
+const imgList = el('imgList');
+const srtFileInput = el('srtFile');
+const srtTextArea = el('srtText');
+const narrationInput = el('narration');
+const bgmusicInput = el('bgmusic');
+const kenburnsToggle = el('kenburns');
+const transitionSel = el('transition');
+const frameSel = el('frame');
+const processBtn = el('processBtn');
+const statusBox = el('statusBox');
+const statusText = el('statusText');
+const statusPct = el('statusPct');
+const barFill = el('barFill');
+const logBox = el('logBox');
+const errorBanner = el('errorBanner');
+const previewVideo = el('preview');
+const downloadBtn = el('downloadBtn');
+
+let sortedImages = [];
+let ffmpeg = null;
+let fontLoaded = false;
+let lastOutputUrl = null;
+
+profileSel.addEventListener('change', () => {
+  customColors.classList.toggle('show', profileSel.value === 'custom');
+});
+
+function naturalSort(a, b) {
+  return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+imgInput.addEventListener('change', () => {
+  sortedImages = Array.from(imgInput.files).sort(naturalSort);
+  imgList.style.display = 'block';
+  imgList.innerHTML = sortedImages.map((f, i) => `<div>${i + 1}. ${f.name}</div>`).join('');
+});
+
+function log(msg) {
+  logBox.textContent += msg + '\n';
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+function setStatus(pct, text) {
+  statusBox.classList.add('show');
+  barFill.style.width = pct + '%';
+  statusPct.textContent = Math.round(pct) + '%';
+  statusText.textContent = text;
+}
+
+function showError(msg) {
+  errorBanner.textContent = msg;
+  errorBanner.classList.add('show');
+}
+
+function clearError() {
+  errorBanner.textContent = '';
+  errorBanner.classList.remove('show');
+}
+
+// ---------- SRT parsing ----------
+function timeToSeconds(t) {
+  const m = t.trim().match(/(\d+):(\d+):(\d+)[,.](\d+)/);
+  if (!m) return 0;
+  const [, h, mi, s, ms] = m;
+  return (+h) * 3600 + (+mi) * 60 + (+s) + (+ms) / 1000;
+}
+
+function parseSRT(raw) {
+  const blocks = [];
+  const chunks = raw.replace(/\r/g, '').trim().split(/\n\n+/);
+  for (const chunk of chunks) {
+    const lines = chunk.split('\n').filter(Boolean);
+    if (lines.length < 2) continue;
+    const timeLineIdx = lines.findIndex(l => l.includes('-->'));
+    if (timeLineIdx === -1) continue;
+    const [startStr, endStr] = lines[timeLineIdx].split('-->');
+    const start = timeToSeconds(startStr);
+    const end = timeToSeconds(endStr);
+    const text = lines.slice(timeLineIdx + 1).join(' ').replace(/<[^>]+>/g, '').trim();
+    if (text) blocks.push({ start, end, duration: Math.max(end - start, 0.4), text });
+  }
+  return blocks;
+}
+
+function wrapText(text, maxChars = 26, maxLines = 2) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = '';
+  for (const w of words) {
+    if ((current + ' ' + w).trim().length > maxChars) {
+      lines.push(current.trim());
+      current = w;
+    } else {
+      current = (current + ' ' + w).trim();
+    }
+  }
+  if (current) lines.push(current.trim());
+  if (lines.length > maxLines) {
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = kept[maxLines - 1].replace(/\s+\S*$/, '') + '…';
+    return kept.join('\n');
+  }
+  return lines.join('\n');
+}
+
+function hexToFF(hex) {
+  return hex.replace('#', '0x');
+}
+
+// ---------- FFmpeg setup ----------
+async function fetchWithProgress(url, mimeType, onProgress) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`No se pudo descargar ${url} (HTTP ${resp.status})`);
+  const totalStr = resp.headers.get('Content-Length');
+  const total = totalStr ? parseInt(totalStr, 10) : 0;
+
+  if (!resp.body || !total) {
+    // Server didn't give us a size or streaming isn't available — fall back silently.
+    const blob = await resp.blob();
+    return URL.createObjectURL(new Blob([blob], { type: mimeType }));
+  }
+
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    onProgress(received, total);
+  }
+  return URL.createObjectURL(new Blob(chunks, { type: mimeType }));
+}
+
+async function ensureFFmpeg() {
+  if (ffmpeg) return ffmpeg;
+  ffmpeg = new FFmpeg();
+  ffmpeg.on('log', ({ message }) => log(message));
+
+  // The FFmpeg class normally spins up a Worker pointing straight at the
+  // unpkg.com script. Browsers block that ("cannot be accessed from
+  // origin ...") because the Worker script's origin (unpkg.com) doesn't
+  // match the page's origin. Fix: build that worker from a blob created
+  // from a copy of the script embedded in this same HTML file, so it's
+  // effectively same-origin no matter where this file is opened from.
+  const workerSrc = document.getElementById('ffmpeg-worker-src').textContent;
+  const classWorkerURL = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' }));
+
+  setStatus(0, 'Descargando motor de video (js)…');
+  const coreURL = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`, 'text/javascript');
+
+  // This is the big one (~31MB) — only downloads once per browser session.
+  const wasmURL = await fetchWithProgress(
+    `${CORE_BASE}/ffmpeg-core.wasm`,
+    'application/wasm',
+    (received, total) => {
+      const mb = (n) => (n / 1024 / 1024).toFixed(1);
+      const pct = (received / total) * 100;
+      setStatus(pct * 0.03, `Descargando motor de video… ${mb(received)} / ${mb(total)} MB`);
+    }
+  );
+
+  setStatus(3, 'Iniciando FFmpeg…');
+  await ffmpeg.load({ coreURL, wasmURL, classWorkerURL });
+  return ffmpeg;
+}
+
+async function ensureFont() {
+  if (fontLoaded) return;
+  setStatus(2, 'Descargando fuente…');
+  const fontData = await fetchFile(FONT_URL);
+  await ffmpeg.writeFile('font.ttf', fontData);
+  fontLoaded = true;
+}
+
+// ---------- Main pipeline ----------
+processBtn.addEventListener('click', async () => {
+  clearError();
+  downloadBtn.classList.remove('show');
+  previewVideo.style.display = 'none';
+  logBox.textContent = '';
+
+  try {
+    const srtRaw = srtFileInput.files[0] ? await srtFileInput.files[0].text() : srtTextArea.value;
+    if (!srtRaw || !srtRaw.trim()) { showError('Falta el SRT (subilo o pegalo en el cuadro de texto).'); return; }
+    if (sortedImages.length === 0) { showError('Faltan las imágenes.'); return; }
+    if (!narrationInput.files[0]) { showError('Falta el audio de narración.'); return; }
+
+    const blocks = parseSRT(srtRaw);
+    if (blocks.length === 0) { showError('No se pudo parsear el SRT. Revisá el formato.'); return; }
+
+    if (blocks.length !== sortedImages.length) {
+      showError(`Mapeo 1-a-1 roto: el SRT tiene ${blocks.length} bloques y subiste ${sortedImages.length} imágenes. Tienen que ser exactamente iguales — no proceso hasta que coincidan.`);
+      return;
+    }
+
+    processBtn.disabled = true;
+    setStatus(0, 'Cargando FFmpeg…');
+    await ensureFFmpeg();
+    await ensureFont();
+
+    const profileKey = profileSel.value;
+    const profile = profileKey === 'custom'
+      ? { text: el('customText').value, box: el('customBox').value, boxAlpha: 0.85 }
+      : PROFILES[profileKey];
+
+    const kenBurns = kenburnsToggle.checked;
+    const transition = transitionSel.value;
+    const frameMode = frameSel.value;
+
+    // 1. write images
+    setStatus(4, 'Copiando imágenes…');
+    for (let i = 0; i < sortedImages.length; i++) {
+      const f = sortedImages[i];
+      const ext = f.name.split('.').pop().toLowerCase();
+      await ffmpeg.writeFile(`img_${i}.${ext}`, await fetchFile(f));
+    }
+
+    // 2. build one clip per block (image + zoom + subtitle burned in)
+    const clipNames = [];
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      const pct = 6 + (i / blocks.length) * 70;
+      setStatus(pct, `Generando clip ${i + 1}/${blocks.length}…`);
+
+      const f = sortedImages[i];
+      const ext = f.name.split('.').pop().toLowerCase();
+      const imgName = `img_${i}.${ext}`;
+      const subName = `sub_${i}.txt`;
+      const clipName = `clip_${i}.mp4`;
+      clipNames.push(clipName);
+
+      await ffmpeg.writeFile(subName, wrapText(block.text));
+
+      const dur = block.duration;
+      const frames = Math.max(Math.round(dur * 30), 4);
+
+      const frameFilter = frameMode === 'crop'
+        ? 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
+        : 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black';
+
+      const zoomFilter = kenBurns
+        ? `scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,zoompan=z='min(zoom+0.0012,1.18)':d=${frames}:s=1080x1920:fps=30`
+        : `${frameFilter},fps=30`;
+
+      const drawtext = `drawtext=fontfile=font.ttf:textfile=${subName}:fontcolor=${profile.text}:fontsize=58:line_spacing=12:box=1:boxcolor=${profile.box}@${profile.boxAlpha}:boxborderw=22:x=(w-text_w)/2:y=h-th-140`;
+
+      const fadeFilter = transition === 'fade'
+        ? `,fade=t=in:st=0:d=0.15,fade=t=out:st=${Math.max(dur - 0.15, 0)}:d=0.15`
+        : '';
+
+      const vf = `${zoomFilter},setsar=1,${drawtext}${fadeFilter}`;
+
+      await ffmpeg.exec([
+        '-loop', '1', '-i', imgName,
+        '-t', String(dur),
+        '-vf', vf,
+        '-r', '30',
+        '-pix_fmt', 'yuv420p',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+        clipName
+      ]);
+    }
+
+    // 3. concat all clips
+    setStatus(78, 'Uniendo clips…');
+    const listTxt = clipNames.map(n => `file '${n}'`).join('\n');
+    await ffmpeg.writeFile('list.txt', listTxt);
+    await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', 'video_noaudio.mp4']);
+
+    // 4. audio: narration (+ optional bg music)
+    setStatus(86, 'Mezclando audio…');
+    const narrationExt = narrationInput.files[0].name.split('.').pop().toLowerCase();
+    await ffmpeg.writeFile(`narration.${narrationExt}`, await fetchFile(narrationInput.files[0]));
+
+    let audioOut = `narration.${narrationExt}`;
+    if (bgmusicInput.files[0]) {
+      const bgExt = bgmusicInput.files[0].name.split('.').pop().toLowerCase();
+      await ffmpeg.writeFile(`bg.${bgExt}`, await fetchFile(bgmusicInput.files[0]));
+      await ffmpeg.exec([
+        '-i', `narration.${narrationExt}`,
+        '-i', `bg.${bgExt}`,
+        '-filter_complex', '[1:a]volume=0.14[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]',
+        '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k',
+        'audio_mixed.m4a'
+      ]);
+      audioOut = 'audio_mixed.m4a';
+    }
+
+    // 5. final mux
+    setStatus(94, 'Exportando video final…');
+    await ffmpeg.exec([
+      '-i', 'video_noaudio.mp4',
+      '-i', audioOut,
+      '-map', '0:v', '-map', '1:a',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+      '-shortest',
+      'final_output.mp4'
+    ]);
+
+    setStatus(100, 'Listo.');
+    const data = await ffmpeg.readFile('final_output.mp4');
+    const blob = new Blob([data.buffer], { type: 'video/mp4' });
+    lastOutputUrl = URL.createObjectURL(blob);
+    previewVideo.src = lastOutputUrl;
+    previewVideo.style.display = 'block';
+    downloadBtn.classList.add('show');
+
+  } catch (err) {
+    console.error(err);
+    showError('Error durante el procesamiento: ' + (err.message || err) + ' — mirá el log de abajo para más detalle.');
+  } finally {
+    processBtn.disabled = false;
+  }
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (!lastOutputUrl) return;
+  const a = document.createElement('a');
+  a.href = lastOutputUrl;
+  a.download = 'stick-video.mp4';
+  a.click();
+});
+</script>
+</body>
+</html>
